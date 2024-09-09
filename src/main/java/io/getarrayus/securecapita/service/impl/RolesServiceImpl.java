@@ -3,6 +3,7 @@ package io.getarrayus.securecapita.service.impl;
 import io.getarrayus.securecapita.entity.Roles;
 import io.getarrayus.securecapita.payload.RolesDto;
 import io.getarrayus.securecapita.repository.RolesRepository;
+import io.getarrayus.securecapita.repository.UserRolesRepository;
 import io.getarrayus.securecapita.service.RolesService;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
@@ -14,15 +15,17 @@ import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
-@NoArgsConstructor
 public class RolesServiceImpl implements RolesService {
 
+    private UserRolesRepository userRolesRepository;
     private RolesRepository rolesRepository;
     private ModelMapper mapper;
 
     @Override
     public RolesDto getRoleByUserId(Long id) {
-        return mapper.map(rolesRepository.findById(id), RolesDto.class);
+        String roleName = rolesRepository.getRolesByUserId(id).getName();
+        String rolePermission = rolesRepository.getRolesByUserId(id).getPermission();
+        return rolesRepository.getRolesByUserId(id);
     }
 
     @Override

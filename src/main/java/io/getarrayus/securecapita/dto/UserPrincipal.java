@@ -4,21 +4,12 @@ import io.getarrayus.securecapita.payload.RolesDto;
 import io.getarrayus.securecapita.payload.UserDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 
-import static java.util.Arrays.stream;
-import static java.util.stream.Collectors.toList;
-
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-
-import java.util.Collection;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import static io.getarrayus.securecapita.dto.UserDTOMapper.fromUser;
 
 @RequiredArgsConstructor
 public class UserPrincipal implements UserDetails {
@@ -28,10 +19,8 @@ public class UserPrincipal implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Stream.of(this.rolesDto.getPermission().split(","))
-                .map(String::trim)
-                .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
+        //return stream(role.getPermission().split(",".trim())).map(SimpleGrantedAuthority::new).collect(toList());
+        return AuthorityUtils.commaSeparatedStringToAuthorityList(rolesDto.getPermission());
     }
 
     @Override
@@ -64,8 +53,8 @@ public class UserPrincipal implements UserDetails {
         return userDto.getEnabled();
     }
 
-    public UserDto getUser() {
-        return userDto;
+    public UserResponse getUser() {
+        return fromUser(this.userDto, rolesDto);
     }
 }
 

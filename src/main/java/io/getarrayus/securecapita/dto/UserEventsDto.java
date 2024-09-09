@@ -14,8 +14,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Data
 public class UserEventsDto {
-    private Users user;
-    private EventType eventType;
+    private Long id;
     private String device;
     private String ipAddress;
+    private String eventType;
+    private String eventDescription;
+    private LocalDateTime createdAt;
 }

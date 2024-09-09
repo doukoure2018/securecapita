@@ -1,30 +1,36 @@
 package io.getarrayus.securecapita.service.impl;
 
-import com.twilio.exception.ApiException;
+
 import io.getarrayus.securecapita.dto.UpdateForm;
+import io.getarrayus.securecapita.dto.UserResponse;
 import io.getarrayus.securecapita.entity.*;
 import io.getarrayus.securecapita.enumeration.VerificationType;
+import io.getarrayus.securecapita.event.NewUserEvent;
+import io.getarrayus.securecapita.exception.ApiException;
 import io.getarrayus.securecapita.exception.BlogAPIException;
 import io.getarrayus.securecapita.exception.ResourceNotFoundException;
 import io.getarrayus.securecapita.payload.LoginDto;
 import io.getarrayus.securecapita.payload.UserDto;
 import io.getarrayus.securecapita.repository.*;
-import io.getarrayus.securecapita.security.CustomUserDetailsService;
-import io.getarrayus.securecapita.security.JwtTokenProvider;
 import io.getarrayus.securecapita.service.EmailService;
+import io.getarrayus.securecapita.service.RolesService;
 import io.getarrayus.securecapita.service.UserService;
 import io.getarrayus.securecapita.utils.DateUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,39 +42,41 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+import static io.getarrayus.securecapita.enumeration.EventType.*;
 import static io.getarrayus.securecapita.enumeration.VerificationType.ACCOUNT;
 
 import static io.getarrayus.securecapita.enumeration.VerificationType.PASSWORD;
+
+import static io.getarrayus.securecapita.utils.UserUtils.getLoggedInUser;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.apache.commons.lang3.RandomStringUtils.randomAlphabetic;
 import static org.apache.commons.lang3.time.DateFormatUtils.format;
 import static org.apache.commons.lang3.time.DateUtils.addDays;
 
 import static org.apache.logging.log4j.util.Strings.isBlank;
+import static org.springframework.security.authentication.UsernamePasswordAuthenticationToken.unauthenticated;
 import static org.springframework.web.servlet.support.ServletUriComponentsBuilder.fromCurrentContextPath;
 
 @Service
-@AllArgsConstructor
 @Slf4j
+@AllArgsConstructor
 public class UserServiceImpl  implements UserService {
 
-    private static final String DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
-
-    private AuthenticationManager authenticationManager;
-    private JwtTokenProvider jwtTokenProvider;
-
-    private UserRepository userRepository;
-    private TwoFactorVerificationsRepository twoFactorVerificationsRepository;
-    private ModelMapper mapper;
-    private PasswordEncoder passwordEncoder;
-    private RolesRepository rolesRepository;
-    private AccountVerificationsRepository accountVerificationsRepository;
-    private EmailService emailService;
-    private CustomUserDetailsService customUserDetailsService;
-    private ResetPasswordVerificationRepository resetPasswordVerificationsRepository;
+    private static  String DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
+    private  AuthenticationManager authenticationManager;
+    private  UserRepository userRepository;
+    private  TwoFactorVerificationsRepository twoFactorVerificationsRepository;
+    private  ModelMapper mapper;
+    private  PasswordEncoder passwordEncoder;
+    private  RolesRepository rolesRepository;
+    private  AccountVerificationsRepository accountVerificationsRepository;
+    private  EmailService emailService;
+    private  ResetPasswordVerificationRepository resetPasswordVerificationsRepository;
+    private  ApplicationEventPublisher publisher;
+    private  RolesService rolesService;
 
     @Override
-    public UserDto createUser(UserDto userDto) {
+    public UserResponse createUser(UserDto userDto) {
 
         if(userRepository.existsByEmail(userDto.getEmail())){
              throw new BlogAPIException(HttpStatus.BAD_REQUEST,"Email already exist");
@@ -111,18 +119,49 @@ public class UserServiceImpl  implements UserService {
         // Send Email
          sendEmail(userDto.getFirstName(), userDto.getEmail(), verificationUrl,ACCOUNT);
          System.out.println(verificationUrl);
-
          // return the user information
-        return mapper.map(user, UserDto.class);
+        // Map user to UserResponse
+        UserResponse userResponse = mapper.map(user, UserResponse.class);
+
+        // Explicitly set the role and permissions in the response
+        userResponse.setRoleName(userRoleOpt.get().getName());
+        userResponse.setPermissions(userRoleOpt.get().getPermission());
+
+        System.out.println(userResponse.getRoleName());
+        System.out.println(userResponse.getPermissions());
+
+        return userResponse;
 
     }
 
     @Override
-    public String login(LoginDto loginDto) {
-        Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
-                loginDto.getEmail(),loginDto.getPassword()));
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        return jwtTokenProvider.generateToken(authentication);
+    public UserResponse login(LoginDto loginDto)
+    {
+        return authenticate(loginDto.getEmail(),loginDto.getPassword());
+    }
+
+
+    private UserResponse authenticate(String email, String password) {
+        UserResponse userByEmail = getUserByEmail(email);
+        try {
+            if (userByEmail != null) {
+                publisher.publishEvent(new NewUserEvent(email, LOGIN_ATTEMPT));
+            }
+            Authentication authentication = authenticationManager.authenticate(unauthenticated(email, password));
+            UserResponse loggedInUser = getLoggedInUser(authentication);
+            assert userByEmail != null;
+            loggedInUser.setId(userByEmail.getId());
+            loggedInUser.setPhone(userByEmail.getPhone());
+            if (!loggedInUser.getUsingMfa()) {
+                publisher.publishEvent(new NewUserEvent(email, LOGIN_ATTEMPT_SUCCESS));
+            }
+            return loggedInUser;
+        } catch (Exception exception) {
+            if (userByEmail != null) {
+                publisher.publishEvent(new NewUserEvent(email, LOGIN_ATTEMPT_FAILURE));
+            }
+            throw new ApiException(exception.getMessage());
+        }
     }
 
     private void sendEmail(String firstName, String email, String verificationUrl, VerificationType verificationType) {
@@ -131,13 +170,25 @@ public class UserServiceImpl  implements UserService {
     }
 
     @Override
-    public UserDto getUserByEmail(String email) {
-       Users users = userRepository.findByEmail(email).orElseThrow(()->new ResourceNotFoundException("Users","Email",email));
-       return mapper.map(users,UserDto.class);
+    public UserResponse getUserByEmail(String email) {
+        try {
+            Users users = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new ResourceNotFoundException("Users", "Email", email));
+            return mapper.map(users, UserResponse.class);
+        } catch (ResourceNotFoundException exception) {
+            // Re-throwing the ResourceNotFoundException with appropriate message
+            log.error("User not found: {}", email);
+            throw exception; // Make sure this exception is handled by the controller advice
+        } catch (Exception exception) {
+            // Catch any other generic exceptions
+            log.error("An error occurred while fetching the user by email: {}", exception.getMessage());
+            throw new ApiException("An error occurred. Please try again.");
+        }
     }
 
+
     @Override
-    public void sendVerificationCode(UserDto userDto) {
+    public void sendVerificationCode(UserResponse userDto) {
         String expirationDate = format(addDays(new Date(), 1), DATE_FORMAT);
         String verificationCode = randomAlphabetic(8).toUpperCase();
         try{
@@ -163,49 +214,63 @@ public class UserServiceImpl  implements UserService {
     }
 
     @Override
-    public UserDto verifyCode(String email, String code) {
-        if (isVerificationCodeExpired(code)) {
-            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "This code has expired");
-        }
+    public UserResponse verifyCode(String email, String code) {
+        if(isVerificationCodeExpired(code)) throw new ApiException("This code has expired. Please login again.");
         try {
-            UserDto userByCode = mapper.map(userRepository.findByTwoFactorVerifications_Code(code), UserDto.class);
-            UserDto userByEmail = mapper.map(userRepository.findByEmail(email), UserDto.class);
+            UserResponse userByCode = mapper.map(userRepository.findByTwoFactorVerifications_Code(code), UserResponse.class);
 
+            userByCode.setRoleName(rolesService.getRoleByUserId(userByCode.getId()).getName());
+            userByCode.setPermissions(rolesService.getRoleByUserId(userByCode.getId()).getPermission());
+
+            UserResponse userByEmail = getUserByEmail(email);
             if (userByCode.getEmail().equalsIgnoreCase(userByEmail.getEmail())) {
-                // Delete the used verification code
-                twoFactorVerificationsRepository.deleteByCode(code);
+                // Fetch the verification entity using code
+                TwoFactorVerifications verification = twoFactorVerificationsRepository.findByCode(code)
+                        .orElseThrow(() -> new ApiException("Verification code not found"));
+                // Explicitly dissociate the verification from the user (optional step)
+                Users user = verification.getUser();
+                user.setTwoFactorVerifications(null);
+                userRepository.save(user);  // Save the user to update the relationship
+                // Now delete the verification entity
+                twoFactorVerificationsRepository.deleteById(verification.getId());
                 return userByCode;
             } else {
-                throw new BlogAPIException(HttpStatus.BAD_REQUEST, "Invalid code. Please try again.");
+                throw new ApiException("Invalid code. Please try again.");
             }
-        } catch (Exception e) {
-            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "An error occurred. Please try again.");
+        } catch (EmptyResultDataAccessException exception) {
+            throw new ApiException("Could not find record");
+        } catch (Exception exception) {
+            throw new ApiException("An error occurred. Please try again.");
         }
     }
-
 
     private Boolean isVerificationCodeExpired(String code) {
         if (code == null || code.isEmpty()) {
-            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "Verification code must not be null or empty");
+            throw new ApiException("Verification code must not be null or empty");
         }
         try {
+            // Fetch the expiration status of the verification code
             Boolean isExpired = twoFactorVerificationsRepository.isCodeExpired(code);
+            // Handle the case where the code is not found (null check)
             if (isExpired == null) {
-                throw new BlogAPIException(HttpStatus.NOT_FOUND, "Verification code not found or invalid");
+                throw new ApiException("Verification code not found or invalid. Please try again.");
             }
+            // Return the expiration status
             return isExpired;
-        } catch (DataAccessException dae) {
-            throw new BlogAPIException(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred, please try again later");
+        } catch (ApiException ex) {
+            // Custom ApiException, pass it along
+            throw ex;
         } catch (Exception exception) {
-            throw new BlogAPIException(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred, please try again later");
+            // Catch any other unexpected exception and throw a general error
+            throw new ApiException("An error occurred. Please try again.");
         }
     }
+
 
     @Override
     public void resetPassword(String email) {
         // Normalize and validate the email address
         String normalizedEmail = email.trim().toLowerCase();
-
         // Check if an account exists for the provided email
         if (getEmailCount(normalizedEmail) <= 0) {
             throw new BlogAPIException(HttpStatus.BAD_REQUEST, "There is no account for this email address.");
@@ -214,11 +279,11 @@ public class UserServiceImpl  implements UserService {
             // Set expiration date to 24 hours from now
             LocalDateTime expirationDate = LocalDateTime.now().plusDays(1);
             // Retrieve the user by email
-            UserDto userDto = getUserByEmail(normalizedEmail);
+            UserResponse userDto = getUserByEmail(normalizedEmail);
             // Generate a new verification URL
             String verificationUrl = getVerificationUrl(UUID.randomUUID().toString(), PASSWORD.getType());
             // Delete any existing password verification entries for this user
-            resetPasswordVerificationsRepository.deleteByUserId(userDto.getId());
+            resetPasswordVerificationsRepository.deleteResetPasswordVerificationsByUserId(userDto.getId());
             // Create a new ResetPasswordVerifications entry
             ResetPasswordVerifications resetPasswordVerification = new ResetPasswordVerifications();
             resetPasswordVerification.setUser(mapper.map(userDto, Users.class));
@@ -243,7 +308,7 @@ public class UserServiceImpl  implements UserService {
 
 
     @Override
-    public UserDto verifyPasswordKey(String key) {
+    public UserResponse verifyPasswordKey(String key) {
         // Check if the link has expired
         if (isLinkExpired(key, PASSWORD)) {
             throw new BlogAPIException(HttpStatus.BAD_REQUEST, "This link has expired. Please reset your password again.");
@@ -253,7 +318,7 @@ public class UserServiceImpl  implements UserService {
             String verificationUrl = getVerificationUrl(key, PASSWORD.getType());
             // Find the user by the verification URL and map to UserDto
             Users user = userRepository.findByResetPasswordVerificationUrl(verificationUrl);
-            return mapper.map(user, UserDto.class);
+            return mapper.map(user, UserResponse.class);
         } catch (BlogAPIException ex) {
             // Re-throw BlogAPIException with the original context
             log.error("Password verification failed: {}", ex.getMessage());
@@ -292,7 +357,7 @@ public class UserServiceImpl  implements UserService {
             user.setPassword(passwordEncoder.encode(password));
             userRepository.save(user);
            //DELETE_VERIFICATION_BY_URL_QUERY
-            resetPasswordVerificationsRepository.deleteByUserId(user.getId());
+            resetPasswordVerificationsRepository.deleteResetPasswordVerificationsByUserId(user.getId());
        }catch (Exception exception){
            log.error(exception.getMessage());
            throw new BlogAPIException(HttpStatus.BAD_REQUEST,"An error occurred. Please try again.oo");
@@ -303,8 +368,7 @@ public class UserServiceImpl  implements UserService {
     public void updatePasswordWithIdUser(Long userId, String password, String confirmPassword) {
         if(!password.equals(confirmPassword)) throw new BlogAPIException(HttpStatus.BAD_REQUEST,"Passwords don't match. Please try again.");
         try {
-            Users userInfo=userRepository.findById(userId).orElseThrow(
-                    ()-> new ResourceNotFoundException("Users","userId",userId));
+            Users userInfo=userRepository.getReferenceById(userId);
             //UPDATE_USER_PASSWORD_BY_URL_QUERY
             userInfo.setPassword(passwordEncoder.encode(password));
             userRepository.save(userInfo);
@@ -320,7 +384,7 @@ public class UserServiceImpl  implements UserService {
             // Retrieve the verification URL using the provided key and account type
             String verificationUrl = getVerificationUrl(key, ACCOUNT.getType());
             // Find the user associated with the account verification URL
-            Users user = userRepository.findByResetPasswordVerificationUrl(verificationUrl);
+            Users user = userRepository.findByAccountVerificationUrl(verificationUrl);
             // Enable the user's account
             user.setEnabled(true);
             // Save the updated user entity
@@ -328,22 +392,22 @@ public class UserServiceImpl  implements UserService {
             // Map the updated user entity to a UserDto
             return mapper.map(updatedUser, UserDto.class);
         } catch (Exception ex) {
-            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "The link is not valid");
+            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "The link is not valid...");
         }
     }
 
 
     @Override
-    public UserDto updateUserDetails(UpdateForm updateUser) {
+    public UserResponse updateUserDetails(UpdateForm updateUser) {
         Users userInfo = mapper.map(updateUser,Users.class);
         Users updatedUser = userRepository.save(userInfo);
-        return  mapper.map(updatedUser,UserDto.class);
+        return  mapper.map(updatedUser,UserResponse.class);
     }
 
     @Override
-    public UserDto getUserById(Long userId) {
+    public UserResponse getUserById(Long userId) {
         Users user = userRepository.getReferenceById(userId);
-        return mapper.map(user,UserDto.class);
+        return mapper.map(user,UserResponse.class);
     }
 
     @Override
@@ -381,14 +445,14 @@ public class UserServiceImpl  implements UserService {
     }
 
     @Override
-    public UserDto toggleMfa(String email) {
+    public UserResponse toggleMfa(String email) {
         Users user = userRepository.findByEmail(email).orElseThrow(
                 ()-> new ResourceNotFoundException("Users","Email","email"));
         if(isBlank(user.getPhone())){ throw new BlogAPIException(HttpStatus.BAD_REQUEST,"You need a phone number to change Multi-Factor Authentication");}
          user.setUsingMfa(!user.getUsingMfa());
          try {
               userRepository.save(user);
-              return mapper.map(user,UserDto.class);
+              return mapper.map(user,UserResponse.class);
          }catch (Exception exception){
              log.error(exception.getMessage());
              throw new BlogAPIException(HttpStatus.BAD_REQUEST,"Unable to update Multi-Factor Authentication");
@@ -396,13 +460,15 @@ public class UserServiceImpl  implements UserService {
     }
 
     @Override
-    public void updateImage(UserDto user, MultipartFile image) {
+    public void updateImage(UserResponse user, MultipartFile image) {
         String userImageUrl = setUserImageUrl(user.getEmail());
         user.setImageUrl(userImageUrl);
         saveImage(user.getEmail(), image);
         Users updateImageUser = mapper.map(user,Users.class);
         userRepository.save(updateImageUser);
     }
+
+
 
     private void saveImage(String email, MultipartFile image) {
         Path fileStorageLocation = Paths.get(System.getProperty("user.home") + "/Downloads/images/").toAbsolutePath().normalize();
@@ -428,34 +494,6 @@ public class UserServiceImpl  implements UserService {
         return fromCurrentContextPath().path("/user/image/" + email + ".png").toUriString();
     }
 
-    @Override
-    public String generateRefreshToken(String email) {
-        UserDetails userDetails= customUserDetailsService.loadUserByUsername(email);
-        return jwtTokenProvider.generateRefreshToken(new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
-
-    }
-
-    @Override
-    public String refreshToken(String refreshToken) {
-        if (jwtTokenProvider.validateToken(refreshToken)) {
-            String username = jwtTokenProvider.getEmail(refreshToken);
-            UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
-            return jwtTokenProvider.generateToken(new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
-        } else {
-            throw new BlogAPIException(HttpStatus.BAD_REQUEST, "Invalid refresh token");
-        }
-    }
-
-    @Override
-    public UserDto getUserInfoFromToken(String token) {
-        String username = jwtTokenProvider.getEmail(token);
-        Users infoUser = userRepository.findByEmail(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User", "username or email", username));
-
-        return mapper.map(infoUser, UserDto.class);
-    }
-
-
     private String getVerificationUrl(String key, String type) {
         return fromCurrentContextPath().path("/auth/secureapi/verify/" + type + "/" + key).toUriString();
     }
@@ -463,4 +501,6 @@ public class UserServiceImpl  implements UserService {
     private Integer getEmailCount(String email){
         return userRepository.countUsersByEmail(email);
     }
+
+
 }

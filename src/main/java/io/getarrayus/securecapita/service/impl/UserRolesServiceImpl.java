@@ -22,11 +22,11 @@ public class UserRolesServiceImpl implements UserRolesService {
     private ModelMapper mapper;
     @Override
     public void updateUserRole(Long userId, String roleName) {
-        //SELECT_ROLE_BY_NAME_QUERY
-        Optional<Roles> role = rolesRepository.findByName(roleName);
-        UserRoles userRolesInfo = userRolesRepository.findByUser_Id(userId);
-        // UPDATE_USER_ROLE_QUERY
-        userRolesInfo.setRole(role.get());
-        userRolesRepository.save(userRolesInfo);
+//        //SELECT_ROLE_BY_NAME_QUERY
+//        Optional<Roles> role = rolesRepository.findByName(roleName);
+//        Roles roles = userRolesRepository.findRolesByUserId(userId);
+//        // UPDATE_USER_ROLE_QUERY
+//        userRolesInfo.setRole(role.get());
+//        userRolesRepository.save(userRolesInfo);
     }
 }

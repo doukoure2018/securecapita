@@ -25,6 +25,7 @@ public class ExceptionUtils {
     public static void processError(HttpServletRequest request, HttpServletResponse response, Exception exception) {
         if(exception instanceof ApiException || exception instanceof DisabledException || exception instanceof LockedException ||
                 exception instanceof BadCredentialsException || exception instanceof InvalidClaimException) {
+            System.out.println(exception.getMessage());
             HttpResponse httpResponse = getHttpResponse(response, exception.getMessage(), HttpStatus.BAD_REQUEST);
             writeResponse(response, httpResponse);
         } else if (exception instanceof TokenExpiredException) {

@@ -6,6 +6,7 @@ import io.getarrayus.securecapita.repository.UserEventsRepository;
 import io.getarrayus.securecapita.service.UserEventsService;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
@@ -15,7 +16,6 @@ import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
-@NoArgsConstructor
 public class UserEventsServiceImpl implements UserEventsService {
 
     private UserEventsRepository userEventsRepository;
@@ -23,9 +23,7 @@ public class UserEventsServiceImpl implements UserEventsService {
 
     @Override
     public List<UserEventsDto> getEventsByUserId(Long userId) {
-        Collection<UserEvents> userEventsCollection=userEventsRepository.findAllByUser_Id(userId);
-        return userEventsCollection.stream().map(userEvents -> mapper.map(userEvents,UserEventsDto.class))
-                   .collect(Collectors.toList());
+        return userEventsRepository.findRecentEventsByUserId(userId);
     }
 
     @Override
