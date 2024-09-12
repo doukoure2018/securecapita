@@ -24,4 +24,7 @@ public class UserDto {
     private LocalDateTime createdAt;
     private String imageUrl;
 
+    private String roleName;
+    private String permissions;
+
 }

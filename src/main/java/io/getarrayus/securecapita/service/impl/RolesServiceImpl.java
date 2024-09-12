@@ -7,6 +7,7 @@ import io.getarrayus.securecapita.repository.UserRolesRepository;
 import io.getarrayus.securecapita.service.RolesService;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,7 @@ import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
+@Slf4j
 public class RolesServiceImpl implements RolesService {
 
     private UserRolesRepository userRolesRepository;
@@ -23,8 +25,7 @@ public class RolesServiceImpl implements RolesService {
 
     @Override
     public RolesDto getRoleByUserId(Long id) {
-        String roleName = rolesRepository.getRolesByUserId(id).getName();
-        String rolePermission = rolesRepository.getRolesByUserId(id).getPermission();
+        log.info("Fetching role for user Id : "+ id);
         return rolesRepository.getRolesByUserId(id);
     }
 

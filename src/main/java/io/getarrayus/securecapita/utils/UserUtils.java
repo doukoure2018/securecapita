@@ -12,12 +12,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.User;
 
 public class UserUtils {
-    public static UserResponse getAuthenticatedUser(Authentication authentication){
-        return ((UserPrincipal) authentication.getPrincipal()).getUser();
-         //return ((UserResponse) authentication.getPrincipal());
+    public static UserDto getAuthenticatedUser(Authentication authentication){
+        //return ((UserPrincipal) authentication.getPrincipal()).getUser();
+         return ((UserDto) authentication.getPrincipal());
     }
 
-    public static UserResponse getLoggedInUser(Authentication authentication) {
+    public static UserDto getLoggedInUser(Authentication authentication) {
         return ((UserPrincipal) authentication.getPrincipal()).getUser();
     }
 }

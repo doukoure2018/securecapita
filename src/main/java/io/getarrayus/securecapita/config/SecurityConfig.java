@@ -38,13 +38,14 @@ import static org.springframework.security.config.http.SessionCreationPolicy.STA
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class SecurityConfig {
-    private BCryptPasswordEncoder encoder;
-    private  CustomAccessDeniedHandler customAccessDeniedHandler;
-    private JwtAuthenticationEntryPoint customAuthenticationEntryPoint;
-    private UserDetailsService userDetailsService;
-    private JwtAuthenticationFilter customAuthorizationFilter;
+    private final BCryptPasswordEncoder encoder;
+    private final  CustomAccessDeniedHandler customAccessDeniedHandler;
+    private final JwtAuthenticationEntryPoint customAuthenticationEntryPoint;
+    private final UserDetailsService userDetailsService;
+    private final JwtAuthenticationFilter customAuthorizationFilter;
+
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -66,6 +67,8 @@ public class SecurityConfig {
                 .addFilterBefore(customAuthorizationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
+
+
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

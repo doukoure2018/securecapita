@@ -34,9 +34,4 @@ public class SecurecapitaApplication {
 		return new BCryptPasswordEncoder(STRENGHT);
 	}
 
-
-
-
-
-
 }
