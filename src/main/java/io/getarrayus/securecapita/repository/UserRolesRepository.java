@@ -12,12 +12,5 @@ import java.util.Optional;
 
 public interface UserRolesRepository extends JpaRepository<UserRoles,Long> {
 
-//    @Query(value = "SELECT r.id, r.name, r.permission " +
-//            "FROM Roles r " +
-//            "JOIN UserRoles ur ON ur.role.id = r.id " +
-//            "JOIN Users u ON u.id = ur.user.id " +
-//            "WHERE u.id = :userId")
-//    Roles findRolesByUserId(@Param("userId") Long userId);
-
-
+    UserRoles findUserRolesByUserId(Long userId);
 }

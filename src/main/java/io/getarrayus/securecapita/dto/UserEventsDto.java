@@ -18,6 +18,6 @@ public class UserEventsDto {
     private String device;
     private String ipAddress;
     private String eventType;
-    private String eventDescription;
+    private String description;
     private LocalDateTime createdAt;
 }

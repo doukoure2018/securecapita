@@ -13,7 +13,7 @@ public class Constants {
     public static final String AUTHORITIES = "authorities";
     public static final String GET_ARRAYS_LLC = "GET_ARRAYS_LLC";
     public static final String CUSTOMER_MANAGEMENT_SERVICE = "CUSTOMER_MANAGEMENT_SERVICE";
-    public static final long ACCESS_TOKEN_EXPIRATION_TIME = 30_000; //432_000_000; //1_800_000;
+    public static final long ACCESS_TOKEN_EXPIRATION_TIME = 432_000_000; //1_800_000;
     public static final long REFRESH_TOKEN_EXPIRATION_TIME = 432_000_000;
     public static final String TOKEN_CANNOT_BE_VERIFIED = "Token cannot be verified";
 

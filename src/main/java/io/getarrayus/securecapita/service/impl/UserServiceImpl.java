@@ -6,36 +6,30 @@ import io.getarrayus.securecapita.dto.UserPrincipal;
 
 import io.getarrayus.securecapita.entity.*;
 import io.getarrayus.securecapita.enumeration.VerificationType;
-import io.getarrayus.securecapita.event.NewUserEvent;
 import io.getarrayus.securecapita.exception.ApiException;
 import io.getarrayus.securecapita.exception.BlogAPIException;
 import io.getarrayus.securecapita.exception.ResourceNotFoundException;
-import io.getarrayus.securecapita.payload.LoginDto;
 import io.getarrayus.securecapita.payload.UserDto;
 import io.getarrayus.securecapita.repository.*;
 import io.getarrayus.securecapita.service.EmailService;
+import io.getarrayus.securecapita.service.OrangeSmsService;
 import io.getarrayus.securecapita.service.RolesService;
 import io.getarrayus.securecapita.service.UserService;
 import io.getarrayus.securecapita.utils.DateUtil;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -48,38 +42,40 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static io.getarrayus.securecapita.dto.UserDTOMapper.fromUser;
-import static io.getarrayus.securecapita.enumeration.EventType.*;
 import static io.getarrayus.securecapita.enumeration.VerificationType.ACCOUNT;
 
 import static io.getarrayus.securecapita.enumeration.VerificationType.PASSWORD;
-
-import static io.getarrayus.securecapita.utils.UserUtils.getLoggedInUser;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.apache.commons.lang3.RandomStringUtils.randomAlphabetic;
 import static org.apache.commons.lang3.time.DateFormatUtils.format;
 import static org.apache.commons.lang3.time.DateUtils.addDays;
 
 import static org.apache.logging.log4j.util.Strings.isBlank;
-import static org.springframework.security.authentication.UsernamePasswordAuthenticationToken.unauthenticated;
 import static org.springframework.web.servlet.support.ServletUriComponentsBuilder.fromCurrentContextPath;
 
 @Service
 @Slf4j
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class UserServiceImpl  implements UserService, UserDetailsService {
 
-    private static  String DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
+    private final static  String DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
 
-    private  UserRepository userRepository;
-    private  TwoFactorVerificationsRepository twoFactorVerificationsRepository;
-    private  ModelMapper mapper;
-    private  PasswordEncoder passwordEncoder;
-    private  RolesRepository rolesRepository;
-    private  AccountVerificationsRepository accountVerificationsRepository;
-    private  EmailService emailService;
-    private  ResetPasswordVerificationRepository resetPasswordVerificationsRepository;
-    private  ApplicationEventPublisher publisher;
-    private  RolesService rolesService;
+    private final  UserRepository userRepository;
+    private final TwoFactorVerificationsRepository twoFactorVerificationsRepository;
+    private final ModelMapper mapper;
+    private final PasswordEncoder passwordEncoder;
+    private final RolesRepository rolesRepository;
+    private final AccountVerificationsRepository accountVerificationsRepository;
+    private final EmailService emailService;
+    private final ResetPasswordVerificationRepository resetPasswordVerificationsRepository;
+
+    private final UserRolesRepository userRolesRepository;
+
+    @Autowired
+    private OrangeSmsService orangeSmsService;
+
+    @Value("${app.frontend.baseurl}")
+    private String frontendBaseUrl;
 
     @Override
     public UserDto createUser(UserDto userDto) {
@@ -162,7 +158,6 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
         }
     }
 
-
     @Override
     public void sendVerificationCode(UserDto userDto) {
         String expirationDate = format(addDays(new Date(), 1), DATE_FORMAT);
@@ -177,7 +172,7 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
             twoFactorVerifications.setCode(verificationCode);
             twoFactorVerifications.setExpirationDate(DateUtil.parseStringToLocalDateTime(expirationDate));
             twoFactorVerificationsRepository.save(twoFactorVerifications);
-            //sendSMS(user.getPhone(), "From: SecureCapita \nVerification code\n" + verificationCode);
+            sendSMS(user.getPhone(), "From: SecureCapita \nVerification code\n" + verificationCode);
             log.info("Verification Code: {}", verificationCode);
         }catch (Exception exception){
             log.error(exception.getMessage());
@@ -186,7 +181,13 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
 
     }
 
-    private void sendSMS(String phone, String s) {
+    private void sendSMS(String recipient, String message) {
+        String token = orangeSmsService.getOAuthToken();
+        if(token !=null){
+             this.orangeSmsService.sendSms(token,recipient,"GUIDIPRESS",message);
+        }else{
+            throw new ApiException("Failed to get OAuth token");
+        }
     }
 
     @Override
@@ -258,7 +259,7 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
             // Generate a new verification URL
             String verificationUrl = getVerificationUrl(UUID.randomUUID().toString(), PASSWORD.getType());
             // Delete any existing password verification entries for this user
-            resetPasswordVerificationsRepository.deleteResetPasswordVerificationsByUserId(userDto.getId());
+            resetPasswordVerificationsRepository.deleteByUserId(userDto.getId());
             // Create a new ResetPasswordVerifications entry
             ResetPasswordVerifications resetPasswordVerification = new ResetPasswordVerifications();
             resetPasswordVerification.setUser(mapper.map(userDto, Users.class));
@@ -329,7 +330,7 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
             user.setPassword(passwordEncoder.encode(password));
             userRepository.save(user);
            //DELETE_VERIFICATION_BY_URL_QUERY
-            resetPasswordVerificationsRepository.deleteResetPasswordVerificationsByUserId(user.getId());
+            resetPasswordVerificationsRepository.deleteByUserId(user.getId());
        }catch (Exception exception){
            log.error(exception.getMessage());
            throw new BlogAPIException(HttpStatus.BAD_REQUEST,"An error occurred. Please try again.oo");
@@ -362,7 +363,7 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
             // Save the updated user entity
             Users updatedUser = userRepository.save(user);
             // Map the updated user entity to a UserDto
-            return mapper.map(updatedUser, UserDto.class);
+            return mapToUserDTO(updatedUser);
         } catch (Exception ex) {
             throw new BlogAPIException(HttpStatus.BAD_REQUEST, "The link is not valid...");
         }
@@ -429,7 +430,30 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
 
     @Override
     public void updateUserRole(Long userId, String roleName) {
+        log.info("Updating role for user id: {}", userId);
+        try {
+            UserRoles userRoles = userRolesRepository.findUserRolesByUserId(userId);
+            if (userRoles == null) {
+                throw new ApiException("No user role found for userId: " + userId);
+            }
+            Roles role = rolesRepository.findByName(roleName)
+                    .orElseThrow(() -> new ApiException("No role found for roleName: " + roleName));
 
+            userRoles.setRole(role);
+            userRolesRepository.save(userRoles);
+
+            log.info("Role updated successfully for user id: {}", userId);
+
+        } catch (EmptyResultDataAccessException exception) {
+            log.error("Role not found by name: {} for user id: {}", roleName, userId);
+            throw new ApiException("No role found for roleName: " + roleName);
+        } catch (ApiException apiException) {
+            log.error("ApiException: {}", apiException.getMessage());
+            throw apiException;
+        } catch (Exception exception) {
+            log.error("An unexpected error occurred while updating role for user id: {}. Error: {}", userId, exception.getMessage(), exception);
+            throw new ApiException("An unexpected error occurred. Please try again.");
+        }
     }
 
     @Override
@@ -445,14 +469,14 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
     public UserDto toggleMfa(String email) {
         Users user = userRepository.findByEmail(email).orElseThrow(
                 ()-> new ResourceNotFoundException("Users","Email","email"));
-        if(isBlank(user.getPhone())){ throw new BlogAPIException(HttpStatus.BAD_REQUEST,"You need a phone number to change Multi-Factor Authentication");}
+        if(isBlank(user.getPhone())) { throw new ApiException("You need a phone number to change Multi-Factor Authentication"); }
          user.setUsingMfa(!user.getUsingMfa());
          try {
               userRepository.save(user);
-              return mapper.map(user,UserDto.class);
+             return mapToUserDTO(user);
          }catch (Exception exception){
              log.error(exception.getMessage());
-             throw new BlogAPIException(HttpStatus.BAD_REQUEST,"Unable to update Multi-Factor Authentication");
+             throw new ApiException("Unable to update Multi-Factor Authentication");
          }
     }
 
@@ -461,14 +485,14 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
         String userImageUrl = setUserImageUrl(user.getEmail());
         user.setImageUrl(userImageUrl);
         saveImage(user.getEmail(), image);
-        Users updateImageUser = mapper.map(user,Users.class);
-        userRepository.save(updateImageUser);
+        Users updateUser = userRepository.getReferenceById(user.getId());
+        updateUser.setImageUrl(userImageUrl);
+        //Users updateImageUser = mapper.map(user,Users.class);
+        userRepository.save(updateUser);
     }
 
-
-
     private void saveImage(String email, MultipartFile image) {
-        Path fileStorageLocation = Paths.get(System.getProperty("user.home") + "/Downloads/images/").toAbsolutePath().normalize();
+        Path fileStorageLocation = Paths.get(System.getProperty("user.home") + "/IdeaProjects/securecapita/src/main/resources/imagesProfiles/").toAbsolutePath().normalize();
         if(!Files.exists(fileStorageLocation)) {
             try {
                 Files.createDirectories(fileStorageLocation);
@@ -488,11 +512,12 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
     }
 
     private String setUserImageUrl(String email) {
-        return fromCurrentContextPath().path("/user/image/" + email + ".png").toUriString();
+        return fromCurrentContextPath().path("/auth/secureapi/image/" + email + ".png").toUriString();
     }
 
     private String getVerificationUrl(String key, String type) {
-        return fromCurrentContextPath().path("/auth/secureapi/verify/" + type + "/" + key).toUriString();
+        //return fromCurrentContextPath().path("/auth/secureapi/verify/" + type + "/" + key).toUriString();
+        return frontendBaseUrl + "/auth/secureapi/verify/" + type + "/" + key;
     }
 
     private Integer getEmailCount(String email){

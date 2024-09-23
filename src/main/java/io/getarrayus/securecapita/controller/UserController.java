@@ -236,7 +236,7 @@ public class UserController {
     @PatchMapping("/update/role/{roleName}")
     public ResponseEntity<HttpResponse> updateUserRole(Authentication authentication, @PathVariable("roleName") String roleName) {
         UserDto userDTO = getAuthenticatedUser(authentication);
-        userRolesService.updateUserRole(userDTO.getId(), roleName);
+        userService.updateUserRole(userDTO.getId(), roleName);
         publisher.publishEvent(new NewUserEvent(userDTO.getEmail(), ROLE_UPDATE));
         return ResponseEntity.ok().body(
                 HttpResponse.builder()
@@ -280,6 +280,7 @@ public class UserController {
 
     @PatchMapping("/update/image")
     public ResponseEntity<HttpResponse> updateProfileImage(Authentication authentication, @RequestParam("image") MultipartFile image) throws InterruptedException {
+        TimeUnit.SECONDS.sleep(3);
         UserDto user = getAuthenticatedUser(authentication);
         userService.updateImage(user, image);
         publisher.publishEvent(new NewUserEvent(user.getEmail(), PROFILE_PICTURE_UPDATE));
@@ -295,7 +296,7 @@ public class UserController {
 
     @GetMapping(value = "/image/{fileName}", produces = IMAGE_PNG_VALUE)
     public byte[] getProfileImage(@PathVariable("fileName") String fileName) throws Exception {
-        return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Downloads/images/" + fileName));
+        return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/IdeaProjects/securecapita/src/main/resources/imagesProfiles/" + fileName));
     }
 
     private ResponseEntity<HttpResponse> sendVerificationCode(UserDto userDto){

@@ -2,5 +2,5 @@ package io.getarrayus.securecapita.service;
 
 public interface UserRolesService {
 
-    void updateUserRole(Long userId,String roleName);
+    //void updateUserRole(Long userId,String roleName);
 }

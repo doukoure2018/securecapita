@@ -17,8 +17,6 @@ import org.springframework.util.StringUtils;
 public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
-
-
     @Override
     public void sendVerificationEmail(String firstName, String email, String verificationUrl, VerificationType verificationType) {
         try{
