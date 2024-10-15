@@ -27,6 +27,8 @@ public interface UserService {
     void updateImage(UserDto user, MultipartFile image);
 
 
+
+
 //    String generateRefreshToken(String email);
 //    String refreshToken(String refreshToken);
 //    UserDto getUserInfoFromToken(String token);

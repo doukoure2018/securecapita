@@ -59,7 +59,6 @@ import static org.springframework.web.servlet.support.ServletUriComponentsBuilde
 public class UserServiceImpl  implements UserService, UserDetailsService {
 
     private final static  String DATE_FORMAT = "yyyy-MM-dd hh:mm:ss";
-
     private final  UserRepository userRepository;
     private final TwoFactorVerificationsRepository twoFactorVerificationsRepository;
     private final ModelMapper mapper;
@@ -70,9 +69,6 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
     private final ResetPasswordVerificationRepository resetPasswordVerificationsRepository;
 
     private final UserRolesRepository userRolesRepository;
-
-    @Autowired
-    private OrangeSmsService orangeSmsService;
 
     @Value("${app.frontend.baseurl}")
     private String frontendBaseUrl;
@@ -172,7 +168,7 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
             twoFactorVerifications.setCode(verificationCode);
             twoFactorVerifications.setExpirationDate(DateUtil.parseStringToLocalDateTime(expirationDate));
             twoFactorVerificationsRepository.save(twoFactorVerifications);
-            sendSMS(user.getPhone(), "From: SecureCapita \nVerification code\n" + verificationCode);
+            emailService.sendSMS(user.getPhone(), "From: SecureCapita \nVerification code\n" + verificationCode);
             log.info("Verification Code: {}", verificationCode);
         }catch (Exception exception){
             log.error(exception.getMessage());
@@ -181,14 +177,9 @@ public class UserServiceImpl  implements UserService, UserDetailsService {
 
     }
 
-    private void sendSMS(String recipient, String message) {
-        String token = orangeSmsService.getOAuthToken();
-        if(token !=null){
-             this.orangeSmsService.sendSms(token,recipient,"GUIDIPRESS",message);
-        }else{
-            throw new ApiException("Failed to get OAuth token");
-        }
-    }
+    // Send text message
+
+
 
     @Override
     public UserDto verifyCode(String email, String code) {

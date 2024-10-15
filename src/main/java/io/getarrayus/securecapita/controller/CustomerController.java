@@ -177,8 +177,8 @@ public class CustomerController {
     }
 
     @GetMapping("/download/report")
-    public ResponseEntity<Resource> downloadReport() throws InterruptedException {
-        TimeUnit.SECONDS.sleep(3);
+    public ResponseEntity<Resource> downloadReport() {
+
         List<Customer> customers = new ArrayList<>();
         customerService.getCustomers().iterator().forEachRemaining(customers::add);
         CustomerReport report = new CustomerReport(customers);

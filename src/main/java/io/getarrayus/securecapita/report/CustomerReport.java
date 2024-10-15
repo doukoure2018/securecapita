@@ -3,8 +3,6 @@ package io.getarrayus.securecapita.report;
 import io.getarrayus.securecapita.domain.Customer;
 import io.getarrayus.securecapita.exception.ApiException;
 import lombok.extern.slf4j.Slf4j;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.time.DateFormatUtils;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;

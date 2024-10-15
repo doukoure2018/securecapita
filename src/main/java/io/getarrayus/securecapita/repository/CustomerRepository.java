@@ -1,7 +1,6 @@
 package io.getarrayus.securecapita.repository;
 
 import io.getarrayus.securecapita.domain.Customer;
-import io.getarrayus.securecapita.dto.Stats;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
